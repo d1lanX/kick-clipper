@@ -1,0 +1,24 @@
+{
+    "name": "Kick Clipper",
+    "description": "This extension helps you generate clips by grabbing their timestamps",
+    "version": "1.0",
+    "manifest_version": 3,
+    "action": {
+        "default_popup": "index.html",
+        "default_title": "see timestamps",
+        "default_icon": "images/kick.jpg"
+    },
+    "content_scripts": [
+        {
+            "js": [
+                "scripts/kick-watcher.js"
+            ],
+            "matches": [
+                "https://kick.com/*"
+            ]
+        }
+    ],
+    "permissions": [
+        "storage"
+    ]
+}
