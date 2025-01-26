@@ -4,12 +4,64 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>kick clipper</title>
-  <script src="scripts/kick-watcher.js"></script>
+  <style>
+    * {
+      padding: 0;
+      margin: 0;
+      line-height: 1em;
+    }
+    main {
+      padding: 1rem;
+      min-width: 300px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    ul {
+      list-style: none;
+    }
+    article {
+      margin: 1rem 0;
+    }
+    header {
+      font-weight: bold;
+    }
+    article>main {
+      color: darkgray;
+    }
+    section#header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: .5em 0;
+
+      & button {
+        font-size: 1em;
+      }
+    }
+  </style>
 </head>
 <body>
-  <h1>your timestamps so far:</h1>
-  <ul>
-    <li>12:2398</li>
-  </ul>
+  <main>
+    <section id="header">
+      <h4>my clips</h4>
+      <button>config</button>
+    </section>
+    <hr>
+    <section>
+      <p>you havent clipped anything yet</p>
+    </section>
+  </main>
+  <template>
+    <article>
+      <small id="channel-name">kangjoel</small>
+      <header id="stream-title">Hatenashi, Japan 🇯🇵 with Ice | !tts </header>
+      <ul id="timestamps">
+        <li>03:08:05 - 03:05:30 (25s)</li>
+      </ul>
+      <footer>
+        <button>download</button>
+      </footer>
+    </article>
+  </template>
 </body>
 </html>
