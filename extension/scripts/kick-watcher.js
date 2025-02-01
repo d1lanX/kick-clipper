@@ -3,7 +3,7 @@
     return new Promise((resolve) => setTimeout(resolve, waitingTime));
   };
 
-  const MAX_RETRIES = 5;
+  const MAX_RETRIES = 3;
   let actionsButtons;
   let numberOfTries = 0;
 
@@ -12,12 +12,8 @@
 
     if (actionsButtons) {
       break;
-    }
-
-    if (!actionsButtons) {
-      alert("we didnt find the actions buttons on kick. retrying...");
-    }
-
+    } 
+    
     await sleep(1000);
     numberOfTries++;
   }
@@ -51,11 +47,12 @@
 
     try {
 
-      kickStorage = localStorage.getItem('kick_storage');
-      if (!kickStorage) {
-        localStorage.setItem('kick_storage', JSON.stringify([]));
+      kickStorage = await chrome.storage.sync.get(['kick_storage']);
+
+      if (!Object.entries(kickStorage).length) {
+        await chrome.storage.sync.set({ kickStorage: [] });
       }
-      kickStorage = JSON.parse(localStorage.getItem("kick_storage"));
+      kickStorage = await chrome.storage.sync.get(['kick_storage']);
 
     } catch (err) {
       alert(
@@ -82,18 +79,20 @@
 
       switch (true) {
         case (length === 1 && type === "start"):
-          kickStorage[liveStreamId].timestamps.push([currentTimeStamp]);
+          kickStorage[liveStreamId].timestamps.push(currentTimeStamp);
           break outer;
         case (length === 0 && type === "start"):
-          kickStorage[liveStreamId].timestamps[i].push([currentTimeStamp]);
+          kickStorage[liveStreamId].timestamps[i].push(currentTimeStamp);
           break outer;
         case (length === 1 && type === "end"):
-          kickStorage[liveStreamId].timestamps[i].push([currentTimeStamp]);
+          kickStorage[liveStreamId].timestamps[i].push(currentTimeStamp);
           break outer;
         default:
           break;
       }
     }
+
+    await chrome.storage.sync.set({ kickStorage });
   };
 
   const getCurrentTime = async () => {
@@ -118,7 +117,7 @@
     const currentURL = new URL(window.location.href).pathname;
 
     const currentStreamAnchor = document.querySelector(
-      `a[href^="${currentURL}/videos/"]`
+        `a[href^="${currentURL}/videos/"]`
     );
 
     if (!currentStreamAnchor) {
