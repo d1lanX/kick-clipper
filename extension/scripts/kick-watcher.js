@@ -1,150 +1,192 @@
 (async () => {
+
+  /** @typedef {{ lastCheck: string, streamId: string, streamTitle: string, streamStart: string, username: string }} StreamInfo */
+
   const sleep = (waitingTime) => {
     return new Promise((resolve) => setTimeout(resolve, waitingTime));
   };
 
+  const buttonStyles = `padding: .5rem;border: 1px solid green;font-weight:bold;`;
+  const MILLISECONDS_IN_HOUR = 60 * 60 * 1000;
   const MAX_RETRIES = 5;
   let actionsButtons;
   let numberOfTries = 0;
 
-  while (numberOfTries < MAX_RETRIES) {
-    actionsButtons = document.querySelector(".flex.grow.gap-2");
+  while (numberOfTries <= MAX_RETRIES) {
+    
+    await sleep(3000);
+    
+    actionsButtons = document.querySelector("div.flex.shrink-0.flex-col.items-end > div.flex.grow.gap-2");
 
     if (actionsButtons) {
       break;
-    }
-
-    if (!actionsButtons) {
-      alert("we didnt find the actions buttons on kick. retrying...");
-    }
-
-    await sleep(1000);
+    } 
+    
     numberOfTries++;
   }
 
   if (!actionsButtons) {
-    alert('it was impossible to find the place to place the buttons, getit?');
     return;
   }
 
   const saveTimestamp = async (type) => {
-    if (!type) {
-      alert(`we didnt understand the type for this? :/`);
-      return;
-    }
+    startTimeBtn.disabled = type === 'start';
+    startTimeBtn.style.opacity = type === 'start' ? '40%' : '100%';
+    endTimeBtn.disabled = type === 'end';
+    endTimeBtn.style.opacity = type === 'end' ? '40%' : '100%';
 
-    const currentTimeStamp = await getCurrentTime();
+    const username = new URL(window.location.href).pathname?.replace('/', '');
+    /** @param {StreamInfo} channelInfo */
+    const channelInfo = await getStreamerInfo(username);
 
-    if (!currentTimeStamp) {
-      alert("we couldnt get the timestamp");
-      return;
-    }
+    const startingTime = new Date(channelInfo.streamStart).getTime();
+    const streamTimeStamp = startingTime - Date.now();      
 
-    const { liveStreamId, liveStreamURL } = await getLiveStreamInfo();
+    saveStreamTimestamp({
+      timestamp: streamTimeStamp,
+      channelInfo,
+      startingTime,
+      type
+    });
 
-    if (!liveStreamId || !liveStreamURL) {
-      alert("we need both the url and id for the stream to save it");
-      return;
-    }
+  };
 
-    let kickStorage;
+  const requestApiInfo = (username) => {
+    return fetch(`https://kick.com/api/v1/channels/${username}`, {
+      credentials: "include"
+    })
+    .then(res => res.json())
+    .then(data => data)
+    .catch(error => {
+      console.error(error);
+      alert(`error getting the channel information for ${username}`);
+    });
+  }
 
-    try {
+  const saveStreamTimestamp = async ({
+    timestamp, 
+    channelInfo,
+    startingTime,
+    type
+  }) => {
 
-      kickStorage = localStorage.getItem('kick_storage');
-      if (!kickStorage) {
-        localStorage.setItem('kick_storage', JSON.stringify([]));
+    const data = await chrome.storage.local.get(['kick_clips']);
+    const db = data['kick_clips'] ?? {};
+
+    const firstStamp = type === 'start' ? [timestamp, null] : [null, timestamp];
+
+    if (!db[channelInfo?.username]) {
+      
+      db[channelInfo.username] = [
+        {
+          streamId: channelInfo.streamId,
+          streamTitle: channelInfo.streamTitle,
+          startTime: startingTime,
+          clips: [
+            firstStamp
+          ]
+        }
+      ];
+
+    } else {
+
+      const clipIndex = type === 'start' ? 0 : 1;
+
+      streamers: for (let stream of db[channelInfo.username]) {
+
+        if (stream.streamId !== channelInfo.streamId) {
+          continue;
+        }
+
+        for (let [index, clip] of stream.clips.entries()) {
+
+          if (clip[clipIndex] === null) {
+            stream.clips[index][clipIndex] = timestamp;
+
+            if (clipIndex === 1) {
+              stream.clips[index][2] = stream.clips[index][0] - stream.clips[index][1];
+            }
+            break streamers;
+          }
+          
+          if (index === stream.clips.length - 1) {
+            stream.clips.push(firstStamp)
+            break streamers;
+          }
+          
+        }
+        
       }
-      kickStorage = JSON.parse(localStorage.getItem("kick_storage"));
 
-    } catch (err) {
-      alert(
-        `we had an error parsing the json or saving a new timestamp! ${err}`
-      );
-      return;
     }
 
-    if (!kickStorage[liveStreamId]) {
-      kickStorage[liveStreamId] = {
-        liveStreamId,
-        liveStreamURL,
-        timestamps: [],
+    await chrome.storage.local.set({ kick_clips: db });
+  }
+
+  const getStreamerInfo = async (username) => {
+    let kickStreams = await chrome.storage.local.get(['kick_streams_info']);
+    kickStreams = Object.keys(kickStreams).length ? kickStreams?.kick_streams_info : []; 
+    const now = Date.now();
+
+    let lastCheckInLessThanOneHour;
+    let foundAtIndex;
+
+    let streamerInfo = kickStreams.find((stream, index) => {
+      if (stream.username === username) {
+        lastCheckInLessThanOneHour = stream.lastCheck + MILLISECONDS_IN_HOUR > now;
+        foundAtIndex = index;
+        return true;
+      }
+
+      return false;
+    });
+
+    if (streamerInfo && lastCheckInLessThanOneHour) {
+      return streamerInfo;
+    }
+
+    const response = await requestApiInfo(username);
+    const currentStream = response?.previous_livestreams[0];
+    const streamId = currentStream?.video?.uuid;
+    const streamTitle = currentStream?.session_title;
+    const streamStart = currentStream?.created_at;
+    let newEntry;
+
+    if (typeof foundAtIndex !== 'undefined') {
+      kickStreams[foundAtIndex].lastCheck = Date.now();
+      kickStreams[foundAtIndex].streamId = streamId;
+      kickStreams[foundAtIndex].streamTitle = streamTitle;
+      kickStreams[foundAtIndex].streamStart = streamStart;
+
+    } else {
+
+      /** @param {StreamInfo} newEntry */
+      newEntry = {
+        username,
+        lastCheck: Date.now(),
+        streamId, 
+        streamTitle, 
+        streamStart
       };
+
+      kickStreams.push(newEntry);
     }
 
-    const timestamps = kickStorage[liveStreamId].timestamps;
-    if (!timestamps.length) {
-      kickStorage[liveStreamId].timestamps.push([]);
-    }
+    await chrome.storage.local.set({ kick_streams_info: kickStreams });
 
-    outer: for (let i = 0; i < timestamps.length; i++) {
-      const length = timestamps[i].length;
-
-      switch (true) {
-        case (length === 1 && type === "start"):
-          kickStorage[liveStreamId].timestamps.push([currentTimeStamp]);
-          break outer;
-        case (length === 0 && type === "start"):
-          kickStorage[liveStreamId].timestamps[i].push([currentTimeStamp]);
-          break outer;
-        case (length === 1 && type === "end"):
-          kickStorage[liveStreamId].timestamps[i].push([currentTimeStamp]);
-          break outer;
-        default:
-          break;
-      }
-    }
-  };
-
-  const getCurrentTime = async () => {
-    const video = document.querySelector("video");
-    if (!video) {
-      alert("we didnt find the video element!");
-      return;
-    }
-
-    video.pause();
-    await sleep(500);
-    video.play();
-
-    return document.querySelector(".tabular-nums").textContent;
-  };
-
-  const getLiveStreamInfo = async () => {
-    const channelNameElement = document.getElementById("channel-username");
-    channelNameElement.click();
-    await sleep(200);
-
-    const currentURL = new URL(window.location.href).pathname;
-
-    const currentStreamAnchor = document.querySelector(
-      `a[href^="${currentURL}/videos/"]`
-    );
-
-    if (!currentStreamAnchor) {
-      alert("we couldnt find the current stream link!");
-      return;
-    }
-
-    const currentStreamLink = currentStreamAnchor.href;
-    const currentStreamId = currentStreamLink.split("/videos/")[1];
-
-    return {
-      liveStreamURL: currentStreamLink || null,
-      liveStreamId: currentStreamId || null,
-    };
-  };
+    return newEntry ?? kickStreams[foundAtIndex];
+  }
 
   const startTimeBtn = document.createElement("button");
-  startTimeBtn.style.cssText =
-    "padding: .5rem;border: 1px solid green;font-weight:bold;";
+  startTimeBtn.style.cssText = buttonStyles;
   startTimeBtn.textContent = "[ start";
   startTimeBtn.addEventListener("click", (e) => saveTimestamp("start"));
 
   const endTimeBtn = document.createElement("button");
-  endTimeBtn.style.cssText =
-    "padding: .5rem;border: 1px solid green;font-weight:bold;";
+  endTimeBtn.style.cssText = buttonStyles;
   endTimeBtn.textContent = "end ]";
+  endTimeBtn.disabled = true;
+  endTimeBtn.style.opacity = '40%';
   endTimeBtn.addEventListener("click", (e) => saveTimestamp("end"));
 
   actionsButtons.insertAdjacentElement("afterbegin", endTimeBtn);
